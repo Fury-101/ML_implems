@@ -6,4 +6,5 @@ Currently includes
 - Simple Linear Regression
 - Fully Connected Neural Network
 - Convolutional Neural Network (dynamic layers and activation function support)
+
 Models may be CPU-heavy
