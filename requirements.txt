@@ -3,3 +3,4 @@ matplotlib
 tqdm
 import-ipynb
 scikit-learn
+cupy-cuda12x
