@@ -45,7 +45,7 @@ class Dense(Layer):
     def backward(self, output_gradient, lr):
         '''
         Dense backwards propagation method. Updates the weights according to the gradient, calculated from the output
-        gradient.
+        gradient. Note that we use the transposed weight matrix to go backwards.
         '''
         weights_gradient = np.dot(output_gradient, np.transpose(self.input))
         input_gradient = np.dot(np.transpose(self.weights), output_gradient)
@@ -54,39 +54,9 @@ class Dense(Layer):
         self.biases -= lr * output_gradient
         return input_gradient
 
-if GPU:
-    # important note: expects img to be a square
-    convolution_kernel = np.RawKernel(r'''
-    __global__
-        void convolve2d(const int img_size, const int kernel_size, const int output_size, float *img, float *kernel, float *output, const bool rot180=0, const bool full=false)
-        {
-        int index = blockIdx.x * blockDim.x + threadIdx.x;
-        int stride = blockDim.x * gridDim.x;
-
-        auto getRotIdx = [&] (int r_in, int c_in) { // Rotates the kernel 180 by reflecting the kernel by x and y
-            return (kernel_size - r_in - 1) * kernel_size + kernel_size - c_in - 1;
-        };
-        
-        for (int i = index; i < img_size * img_size; i += stride) {
-            int r = i/img_size;
-            int c = i%img_size;
-
-            if (r > img_size - kernel_size || c > img_size - kernel_size) {
-                return;
-            }
-
-            for (int i = 0; i<kernel_size*kernel_size; i++) {
-                int rk = i/kernel_size;
-                int ck = i%kernel_size;
-
-                if (rot180)
-                    output[r*output_size + c] += kernel[getRotIdx(rk, ck)] * img[(r + rk)*img_size + (c + ck)];
-                else
-                    output[r*output_size + c] += kernel[rk * kernel_size + ck] * img[(r + rk)*img_size + (c + ck)];
-            }
-        }
-    }
-    ''', 'convolve2d')
+# TODO
+# class MaxPooling2D(Layer):
+#     def __init__(self, input_shape, pool_size):
 
 class Conv2D(Layer):
                        #(depth, width, height) 
@@ -106,9 +76,43 @@ class Conv2D(Layer):
                 blockSize = 256
                 threads = (self.input_shape[0]*self.input_shape[1] + blockSize - 1) / blockSize
 
+                # this convolution kernel works in a google colab but not in python for some reason:
+                # https://colab.research.google.com/drive/19Mh2-tw1LaBY_81jKP5aeI2zJkD_X-Ol
+                # important note: expects img to be a square
+                convolution_kernel = np.RawKernel(r'''
+                __global__
+                    void convolve2d(const int img_size, const int kernel_size, const int output_size, float *img, float *kernel, float *output, const bool rot180=0, const bool full=false)
+                    {
+                    int index = blockIdx.x * blockDim.x + threadIdx.x;
+                    int stride = blockDim.x * gridDim.x;
+
+                    auto getRotIdx = [&] (int r_in, int c_in) { // Rotates the kernel 180 by reflecting the kernel by x and y
+                        return (kernel_size - r_in - 1) * kernel_size + kernel_size - c_in - 1;
+                    };
+                    
+                    for (int i = index; i < img_size * img_size; i += stride) {
+                        int r = i/img_size;
+                        int c = i%img_size;
+
+                        if (r > img_size - kernel_size || c > img_size - kernel_size) {
+                            return;
+                        }
+
+                        for (int i = 0; i<kernel_size*kernel_size; i++) {
+                            int rk = i/kernel_size;
+                            int ck = i%kernel_size;
+
+                            if (rot180)
+                                output[r*output_size + c] += kernel[getRotIdx(rk, ck)] * img[(r + rk)*img_size + (c + ck)];
+                            else
+                                output[r*output_size + c] += kernel[rk * kernel_size + ck] * img[(r + rk)*img_size + (c + ck)];
+                        }
+                    }
+                }
+                ''', 'convolve2d')
                 # output_temp = np.zeros(self.output[i].shape)
                 # convolution_kernel((blockSize,), (threads,), 
-                #                     (self.input_shape[1], 
+                #                     (self.input_shape[-1], 
                 #                     self.kernel_shape[-1],
                 #                     self.output_shape[-1],
                 #                     self.input[j],
